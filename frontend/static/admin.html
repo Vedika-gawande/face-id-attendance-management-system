@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>👩‍💼 Face + ID Attendance Admin Portal</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Poppins', 'Inter', sans-serif;
+      background-color: #f4f6f9;
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Fixed Header */
+    header {
+      background-color: #0d3b66;
+      color: white;
+      padding: 1rem 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    header h2 {
+      font-weight: 600;
+    }
+
+    .container {
+      flex: 1;
+      margin-top: 30px;
+      max-width: 1150px;
+    }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .filters .form-control {
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    /* Table */
+    table {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    thead {
+      background-color: #0d3b66;
+      color: white;
+      font-weight: 600;
+    }
+
+    tbody tr:hover {
+      background-color: #f1f5ff;
+      transition: 0.3s;
+    }
+
+    .btn-export {
+      background-color: #198754;
+      color: white;
+      border-radius: 8px;
+      transition: 0.3s;
+    }
+
+    .btn-export:hover {
+      background-color: #146c43;
+    }
+
+    /* Footer */
+    footer {
+      background-color: #e9ecef;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 🧭 Header -->
+  <header class="text-center">
+    <h2>🎓 Face + ID Attendance Admin Portal</h2>
+    <!-- <p class="mb-0 fs-6">Government Polytechnic, Yavatmal</p> -->
+  </header>
+
+  <!-- 📊 Main Content -->
+  <div class="container">
+    <div class="filters">
+      <div class="d-flex gap-2 flex-wrap">
+        <input type="text" id="searchBar" class="form-control" placeholder="🔍 Search by name or roll number..." style="width: 250px;">
+        <select id="branchFilter" class="form-select" style="width: 200px;">
+          <option value="">All Branches</option>
+          <option value="Computer Engineering">Computer Engineering</option>
+          <option value="Mechanical Engineering">Mechanical Engineering</option>
+          <option value="Electrical Engineering">Electrical Engineering</option>
+          <option value="Civil Engineering">Civil Engineering</option>
+        </select>
+      </div>
+      <button id="exportBtn" class="btn btn-export">⬇️ Download CSV</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle text-center">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Roll No</th>
+            <th>Branch</th>
+            <th>Status</th>
+            <th>Confidence</th>
+            <th>Timestamp (IST)</th>
+          </tr>
+        </thead>
+        <tbody id="attendance-body">
+          <tr><td colspan="7" class="text-center">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⚙️ Footer -->
+  <footer>
+    © 2025 Face + ID Attendance System | Designed for Academic Use
+  </footer>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const token = localStorage.getItem("adminToken");
+  if (!token) {
+    alert("Please log in as admin first.");
+    window.location.href = "admin_login.html";
+  }
+});
+
+// 🕒 Convert UTC → IST for readability
+function formatToIST(utcString) {
+  if (!utcString) return "—";
+  let date;
+
+  if (utcString.includes("Z")) {
+    date = new Date(utcString);
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    date = new Date(date.getTime() + istOffsetMs);
+  } else {
+    date = new Date(utcString);
+  }
+
+  return date.toLocaleString("en-IN", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }) + " (IST)";
+}
+
+// 📊 Fetch & display all attendance data
+async function loadAttendance() {
+  const tableBody = document.getElementById("attendance-body");
+  tableBody.innerHTML = "<tr><td colspan='8' class='text-center'>⏳ Loading records...</td></tr>";
+
+  try {
+    const res = await fetch("http://127.0.0.1:8000/admin/attendance");
+    if (!res.ok) throw new Error("Failed to fetch attendance data");
+    let data = await res.json();
+
+    // 🔍 Filter and search
+    const searchText = document.getElementById("searchBar").value.toLowerCase();
+    const branch = document.getElementById("branchFilter").value;
+
+    data = data.filter(row =>
+      (row.user_name?.toLowerCase().includes(searchText) ||
+       row.roll_no?.toLowerCase().includes(searchText)) &&
+      (branch ? row.branch === branch : true)
+    );
+
+    if (!data.length) {
+      tableBody.innerHTML = "<tr><td colspan='8' class='text-center text-muted'>No matching records found.</td></tr>";
+      return;
+    }
+
+    // 🧱 Create rows dynamically (✅ use `row`, not `record`)
+    tableBody.innerHTML = data.map(row => `
+      <tr>
+        <td>${row.id}</td>
+        <td>${row.user_name}</td>
+        <td>${row.roll_no || "—"}</td>
+        <td>${row.branch || "—"}</td>
+        <td>${row.status}</td>
+        <td>${row.confidence}%</td>
+        <td>${formatToIST(row.timestamp)}</td>
+        <td>
+          <button class="btn btn-danger btn-sm" onclick="deleteRecord(${row.id})">🗑 Delete</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error(err);
+    tableBody.innerHTML = `<tr><td colspan='8' class='text-danger text-center'>❌ Error: ${err.message}</td></tr>`;
+  }
+}
+
+// 🗑 Delete record (Admin only)
+async function deleteRecord(id) {
+  if (!confirm("Are you sure you want to delete this record?")) return;
+
+  const token = localStorage.getItem("token");
+
+  const res = await fetch(`http://127.0.0.1:8000/admin/attendance/${id}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  const data = await res.json();
+  alert(data.message || "Error deleting record");
+  loadAttendance(); // refresh the table
+}
+
+// ⏳ Auto-refresh every 20 seconds
+document.addEventListener("DOMContentLoaded", () => {
+  loadAttendance();
+  setInterval(loadAttendance, 20000);
+
+  document.getElementById("searchBar").addEventListener("input", loadAttendance);
+  document.getElementById("branchFilter").addEventListener("change", loadAttendance);
+});
+
+// 📁 CSV Export
+document.getElementById("exportBtn").addEventListener("click", () => {
+  window.open("http://127.0.0.1:8000/admin/export_csv", "_blank");
+});
+</script>
+
+</body>
+</html>
